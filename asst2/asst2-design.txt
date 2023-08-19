@@ -1,0 +1,73 @@
+What significant data structures have you added and what function do they perform?
+What are any significant issues surround managing the data structures and state do they contain?
+What data structures are per-process and what structures are shared between processes?
+What is the main issues related to transferring data to and from applications?
+If fork() was implemented, what concurrency issues would be introduced to your implementation?
+
+
+**Part 1: Data Structures and State**
+    We have create two new data structures to manage the file states. 
+        1. A file descriptor table has been added to the process struct to keep track of the
+        file descriptors that are opened for the process. The table is a fixed size array of
+        integers, the length of the table array is equal to OPEN_MAX. Each of the integers reprensent 
+        the index of the file table. The file descriptor table array is initialized to -1, which 
+        indicates that the file descriptor is avjailable for use.
+
+        2. A global file table has been created to keep track of the files that are opened by
+        processes. The file table array is shared between processes. The table array is a fixed size 
+        array of file struct, the size of the table is equal to OPEN_MAX. The file struct is 
+        a custom struct that contains the following atrributes:
+            - struct vnode *vn
+            - off_t offset
+            - int flags
+            - int refcount
+
+**Part 2: Implementation of Functions**
+    - open_file_table_init():
+        This function is called in the main.c file. It is called to initialize the global file
+        table. The function will return 0 if the initialization is successful, otherwise it will
+        return the related error code.
+    - sys_open():
+        The function receives the file name, flags mode and the address of retval of syscall. Once the file has
+        been opened successfully, the function will change the retval and return 0. Otherwise, it will return the
+        related error code.
+    - sys_close():
+        This function will call vfs_close() to close the file. If the file is closed successfully, the function
+        will return 0. Otherwise, it will return the related error code.
+    - sys_read() and sys_write():
+        These two functions will call VOP_READ() and VOP_WRITE() to read and write the file. If the file is read
+        or written successfully, the function will modify the retval and return 0. Otherwise, it will return the
+        related error code.
+    - sys_dup2():
+        This function receives two fd(i.e old fd and new fd) and an return value for sys_call(), it first check 
+        whether these two fd is valid, if not, return error (EBADF). If two fds are the same, there should be no
+        effect, so we just simply return 0, and set the return value to newfd. Then try to determine whether 
+        file descriptor table and open file table are full, if so, return error. Then determine whether current newfd 
+        points to an existing file pointer on open file table, if so, close that file. Finally we can safely assign 
+        the new fd to point to the same file pointer as old fd.
+    - sys_lseek():
+        This function first check whether fd is valid, if not, return error. Then it need to determine whether the vnode
+        pointed by the corresponding entry on the open file table is seekable, if not, return error. Then we can safely
+        process an new offset for lseek operation according to whence. Finally, we can set the offset on open file table to
+        an new offset.
+        
+
+**Part 3: Significant Issues of Managing data structures and state**
+    The two data structures that we have created are both fixed size arrays. The maximum length of both array is OPEN_MAX,
+    and we have to allocate the space of OPEN_MAX for both arrays.
+    
+**Part 4: Concurrency Issues with fork() **
+    If the fork() is implemented, the new process created by fork() will have the same file descriptor table as the parent
+    process, which means the new process and the parent process may modify the opened files at the same time and used the 
+    same file descriptor. This may cause the concurrency issues. To solve this problem, we may add a lock to the file struct
+    to ensure only one process can access the file at a time. 
+
+**Part 5: Files have been modified**
+    - kern/arch/mips/syscal/syscall.c
+    - kern/include/file.h
+    - kern/include/proc.h
+    - kern/include/syscall.h
+    - kern/main/main.c
+    - kern/proc/proc.c
+    - kern/syscall/file.c
+    - kern/syscall/runprogram.c
